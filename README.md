@@ -3,11 +3,12 @@
 A browser app for designing drawer divider boxes on a 50 mm grid. It exports print-ready **3MF** files for the **Bambu Lab H2S** (340 × 320 mm bed). Everything runs in the browser, so there's no server and nothing to install.
 
 ## Features
-- **Drawer sizes:** Large (675 × 425), Small (400 × 425) or a custom size. The drawer fills with 50 mm boxes.
+- **Drawer sizes:** Large (675 × 425), Small (400 × 425) or a custom size. The drawer starts full of 50 mm boxes.
 - **Leftover space:** if the drawer isn't an exact multiple of 50 mm, the outer boxes grow to fill the gap. You can switch this so all boxes grow evenly instead.
 - **Merging:** click or drag to select boxes, then **Merge** (M) them into one bigger box. Rectangles, L-shapes and T-shapes all work. **Split** (S) undoes a merge.
+- **Empty spaces:** select boxes and press **Delete** (Del) to leave part of the drawer empty. Click an empty space to put a box back.
 - **Box sizes:** 3 mm base and 1 mm walls. Default height is 60 mm, and you can change the height of any box.
-- **Label tabs:** each label tab sits on the inside of the front wall. Its underside is a 45° overhang, so it prints with **no supports**. Label text is raised on the tab and finishes flush with the rim.
+- **Label tabs:** each label tab sits on the inside of the front wall. Its underside is a 45° overhang, so it prints with **no supports**. Label text is engraved (cut down) into the top of the tab. You can switch to raised text under **All boxes → Advanced**.
 - **Size warnings:** boxes that are too big for the H2S bed show in red.
 - **Print plates:** boxes are packed automatically onto as many H2S plates as needed. You get one 3MF per plate, in a .zip if there's more than one.
 - **Save and share:** layouts autosave in the browser. You can also save and open a .json file, or **Copy share link** to send a link that opens the exact layout.

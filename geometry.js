@@ -131,7 +131,8 @@ function prismX(pts, x0, x1, k) {
 
 /**
  * Build one box. Returns a Manifold in drawer coordinates (x right, y back, z up).
- * opts: {height, wall, base, clearance, label, labelTabs, tabDepth, textRelief}
+ * opts: {height, wall, base, clearance, label, labelTabs, tabDepth, textRelief, textStyle}
+ * textStyle 'engraved' cuts the label into the tab; 'raised' stands it proud of the tab, flush with the rim.
  */
 export function buildBox(cells, grid, opts) {
   const tmp = [];                                   // wasm objects to free afterwards
@@ -162,7 +163,8 @@ function buildBoxInner(cells, grid, opts, k) {
     const d = Math.min(opts.tabDepth, innerDepth * 0.45);
     const text = (opts.label || '').trim();
     const relief = text && FONT ? opts.textRelief : 0;
-    const zt = H - relief;                       // tab top (text sits on it, flush with rim)
+    const engrave = opts.textStyle !== 'raised';
+    const zt = engrave ? H : H - relief;         // tab top: flush with the rim (engraved) or below it (raised text sits on it)
     // Triangle: flat top, 45° underside running back into the wall -> prints without support.
     const ov = Math.min(0.5, wall * 0.5);        // overlap into the wall so it fuses
     const tri = [[yIn - ov, zt], [yIn - ov, zt - d - ov], [yIn + d, zt]];
@@ -185,8 +187,15 @@ function buildBoxInner(cells, grid, opts, k) {
         }
         const cx = (x0 + x1) / 2 - (b.min[0] + b.max[0]) / 2;
         const cy = yIn + d / 2 - (b.min[1] + b.max[1]) / 2;
-        const txt = k(k(k(cs.translate([cx, cy])).extrude(relief)).translate([0, 0, zt]));
-        solid = k(solid).add(txt);
+        if (engrave) {
+          // cut the letters down into the tab; limit the depth so the thin back edge of the tab is never cut through
+          const depth = Math.min(relief, d * 0.12);
+          const cut = k(k(k(cs.translate([cx, cy])).extrude(depth + 0.5)).translate([0, 0, zt - depth]));
+          solid = k(solid).subtract(cut);
+        } else {
+          const txt = k(k(k(cs.translate([cx, cy])).extrude(relief)).translate([0, 0, zt]));
+          solid = k(solid).add(txt);
+        }
       }
     }
   }

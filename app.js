@@ -11,7 +11,7 @@ const BED = { w: 340, h: 320, margin: 3 };         // Bambu Lab H2S
 const PRESETS = { large: { w: 675, d: 425 }, small: { w: 400, d: 425 } };
 const DEFAULT_SETTINGS = {
   height: 60, wall: 1, base: 3, clearance: 0.5, stretch: 'edges',
-  labelTabs: true, tabDepth: 12, textRelief: 0.6, plateGap: 2,
+  labelTabs: true, tabDepth: 12, textRelief: 0.6, textStyle: 'engraved', plateGap: 2,
 };
 
 const $ = id => document.getElementById(id);
@@ -59,6 +59,15 @@ function undo() {
   changed();
 }
 
+function emptyCells(s = state) {
+  const g = gridOf(s);
+  const used = new Set(s.boxes.flatMap(b => b.cells.map(c => c.join(','))));
+  const out = [];
+  for (let j = 0; j < g.y.n; j++) for (let i = 0; i < g.x.n; i++)
+    if (!used.has(i + ',' + j)) out.push([i, j]);
+  return out;
+}
+
 function boxHeight(b) { return b.height ?? state.settings.height; }
 function boxDims(b) {
   const r = G.cellsBounds(b.cells, grid());
@@ -98,9 +107,8 @@ function expand(o) {
     cells.forEach(([i, j]) => used.add(i + ',' + j));
     s.boxes.push({ id: s.nextId++, cells, height: b.h ?? null, label: b.l || '' });
   }
-  // fill any cell that is missing
-  for (let j = 0; j < g.y.n; j++) for (let i = 0; i < g.x.n; i++)
-    if (!used.has(i + ',' + j)) s.boxes.push({ id: s.nextId++, cells: [[i, j]], height: null, label: '' });
+  // cells with no box are left empty on purpose (deleted boxes); only a file with no box list gets filled
+  if (!Array.isArray(o.b)) fillSingles(s);
   return s;
 }
 const b64u = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -164,7 +172,8 @@ function renderSidebar() {
   $('drawerW').value = drawer.w; $('drawerD').value = drawer.d;
   const g = grid();
   const remX = drawer.w - g.x.n * CELL, remY = drawer.d - g.y.n * CELL;
-  let gi = `<b>${g.x.n} × ${g.y.n}</b> grid · ${g.x.n * g.y.n} cells`;
+  const nEmpty = emptyCells().length;
+  let gi = `<b>${g.x.n} × ${g.y.n}</b> grid · ${g.x.n * g.y.n} cells${nEmpty ? ` · ${nEmpty} left empty` : ''}`;
   if (remX > 0.01 || remY > 0.01) {
     gi += settings.stretch === 'edges'
       ? `<br><span class="hint">Leftover ${fmt(remX)} × ${fmt(remY)} mm is taken up by the outer boxes (edge cells ${fmt(g.x.sizes[0])} × ${fmt(g.y.sizes[0])} mm).</span>`
@@ -180,13 +189,14 @@ function renderSidebar() {
   $('setStretch').value = settings.stretch;
   $('setTabDepth').value = settings.tabDepth;
   $('setRelief').value = settings.textRelief;
+  $('setTextStyle').value = settings.textStyle === 'raised' ? 'raised' : 'engraved';
   $('setGap').value = settings.plateGap;
 
   // selection panel
   const sel = state.boxes.filter(b => selection.has(b.id));
   const p = $('selPanel');
   if (!sel.length) {
-    p.innerHTML = `<p class="hint">Click a box to select it, or drag across several. Then use <b>Merge</b> to join them into one bigger box. Shift-click adds to the selection.</p>`;
+    p.innerHTML = `<p class="hint">Click a box to select it, or drag across several. Then use <b>Merge</b> to join them into one bigger box, or <b>Delete</b> to leave that part of the drawer empty. Shift-click adds to the selection.${nEmpty ? ' Click an empty space to put a box back.' : ''}</p>`;
   } else {
     const one = sel.length === 1 ? sel[0] : null;
     const heights = [...new Set(sel.map(b => b.height))];
@@ -214,6 +224,7 @@ function renderSidebar() {
 
   $('btnMerge').disabled = sel.length < 2;
   $('btnSplit').disabled = !sel.some(b => b.cells.length > 1);
+  $('btnDelete').disabled = !sel.length;
   $('btnUndo').disabled = !undoStack.length;
 
   // print summary
@@ -223,7 +234,7 @@ function renderSidebar() {
   $('printWarn').innerHTML = over.length
     ? `<div class="warn">${over.length} box${over.length > 1 ? 'es are' : ' is'} too big for the print bed and won't be exported: ${over.map(b => escapeHtml(boxName(b))).join(', ')}.</div>`
     : (pk.plates.length > 1 ? `<div class="note">This drawer needs ${pk.plates.length} print sessions, so you'll get ${pk.plates.length} files.</div>` : '');
-  $('status').textContent = `${state.drawer.w} × ${state.drawer.d} mm drawer · ${state.boxes.length} boxes`;
+  $('status').textContent = `${state.drawer.w} × ${state.drawer.d} mm drawer · ${state.boxes.length} box${state.boxes.length === 1 ? '' : 'es'}${nEmpty ? ` · ${nEmpty} empty space${nEmpty === 1 ? '' : 's'}` : ''}`;
 }
 
 const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -252,6 +263,19 @@ function renderEditor() {
 
   const owner = new Map();
   state.boxes.forEach(b => b.cells.forEach(([i, j]) => owner.set(i + ',' + j, b)));
+
+  // empty spaces (deleted boxes): click one to put a 50 mm box back
+  for (const [i, j] of emptyCells()) {
+    const eg = el('g', { class: 'empty' }, svg);
+    el('rect', {
+      x: g.x.bounds[i] + 3, y: Y(g.y.bounds[j + 1]) + 3, width: g.x.sizes[i] - 6, height: g.y.sizes[j] - 6, rx: 3,
+      fill: 'transparent', stroke: '#b9b3a7', 'stroke-width': 1, 'stroke-dasharray': '4 4',
+    }, eg);
+    const t = el('text', { x: (g.x.bounds[i] + g.x.bounds[i + 1]) / 2, y: Y((g.y.bounds[j] + g.y.bounds[j + 1]) / 2) + 5,
+      'text-anchor': 'middle', 'font-size': 15, fill: '#a39d91', 'pointer-events': 'none' }, eg);
+    t.textContent = '+';
+    el('title', {}, eg).textContent = 'Empty space: click to add a box';
+  }
 
   for (const b of state.boxes) {
     const selected = selection.has(b.id), over = isOversize(b);
@@ -330,9 +354,15 @@ function cellAt(evt) {
 }
 const boxAtCell = c => c && state.boxes.find(b => b.cells.some(([i, j]) => i === c[0] && j === c[1]));
 
+let pendingAdd = null;               // empty cell pressed; a box is added if the pointer is released on it
 function onDown(e) {
-  const b = boxAtCell(cellAt(e));
-  if (!b) { if (!e.shiftKey) { selection.clear(); changed({ geometry: false }); } return; }
+  pendingAdd = null;
+  const c = cellAt(e), b = boxAtCell(c);
+  if (!b) {
+    if (c) pendingAdd = c;
+    else if (!e.shiftKey) { selection.clear(); changed({ geometry: false }); }
+    return;
+  }
   svg.setPointerCapture(e.pointerId);
   const additive = e.shiftKey || e.ctrlKey || e.metaKey;
   dragging = { start: b.id, moved: false, mode: selection.has(b.id) ? 'remove' : 'add', additive, base: new Set(selection) };
@@ -353,7 +383,13 @@ function onMove(e) {
     renderEditor(); renderSidebar();
   }
 }
-function onUp() {
+function onUp(e) {
+  if (pendingAdd) {
+    const c = e.type === 'pointerup' ? cellAt(e) : null, p = pendingAdd;
+    pendingAdd = null;
+    if (c && c[0] === p[0] && c[1] === p[1] && !boxAtCell(c)) addBox(c);
+    return;
+  }
   if (!dragging) return;
   if (!dragging.moved) {
     const id = dragging.start;
@@ -392,9 +428,25 @@ function split() {
   selection = new Set(added.map(b => b.id));
   changed();
 }
+function deleteSelected() {
+  if (!selection.size) return;
+  snapshot();
+  const n = selection.size;
+  state.boxes = state.boxes.filter(b => !selection.has(b.id));
+  selection.clear();
+  toast(`Deleted ${n} box${n === 1 ? '' : 'es'}. Click an empty space to put a box back.`);
+  changed();
+}
+function addBox(cell) {
+  snapshot();
+  const nb = { id: state.nextId++, cells: [cell], height: null, label: '' };
+  state.boxes.push(nb);
+  selection = new Set([nb.id]);
+  changed();
+}
 function resetLayout(confirmIt = true) {
-  if (confirmIt && state.boxes.some(b => b.cells.length > 1 || b.label || b.height != null) &&
-      !confirm('Reset to all 50 mm boxes? Merges, labels and heights will be cleared (you can Undo).')) return;
+  if (confirmIt && (emptyCells().length || state.boxes.some(b => b.cells.length > 1 || b.label || b.height != null)) &&
+      !confirm('Reset to a full drawer of 50 mm boxes? Merges, labels, heights and empty spaces will be cleared (you can Undo).')) return;
   snapshot(); fillSingles(state); selection.clear(); changed();
 }
 function setDrawer(preset, w, d) {
@@ -402,15 +454,16 @@ function setDrawer(preset, w, d) {
   const oldG = grid();
   const ns = { ...state, drawer: { preset, w, d } };
   const newG = gridOf(ns);
+  const wasEmpty = new Set(emptyCells().map(c => c.join(',')));
   snapshot();
   state.drawer = { preset, w, d };
   if (oldG.x.n !== newG.x.n || oldG.y.n !== newG.y.n) {
-    // keep boxes that still fit inside the new grid, refill the rest with singles
+    // keep boxes that still fit inside the new grid, refill the rest with singles (spaces left empty stay empty)
     const keep = state.boxes.filter(b => b.cells.every(([i, j]) => i < newG.x.n && j < newG.y.n));
     const used = new Set(keep.flatMap(b => b.cells.map(c => c.join(','))));
     state.boxes = keep;
     for (let j = 0; j < newG.y.n; j++) for (let i = 0; i < newG.x.n; i++)
-      if (!used.has(i + ',' + j)) state.boxes.push({ id: state.nextId++, cells: [[i, j]], height: null, label: '' });
+      if (!used.has(i + ',' + j) && !wasEmpty.has(i + ',' + j)) state.boxes.push({ id: state.nextId++, cells: [[i, j]], height: null, label: '' });
     selection.clear();
   }
   changed();
@@ -426,12 +479,12 @@ function boxKey(b) {
   const g = grid(), s = state.settings;
   const r = G.cellsBounds(b.cells, g);
   return JSON.stringify([b.cells.map(([i, j]) => [g.x.bounds[i], g.y.bounds[j], g.x.sizes[i], g.y.sizes[j]]),
-    boxHeight(b), s.wall, s.base, s.clearance, s.labelTabs, s.tabDepth, s.textRelief, fontReady ? b.label : '', r.x0]);
+    boxHeight(b), s.wall, s.base, s.clearance, s.labelTabs, s.tabDepth, s.textRelief, s.textStyle, fontReady ? b.label : '', r.x0]);
 }
 function boxOpts(b) {
   const s = state.settings;
   return { height: boxHeight(b), wall: s.wall, base: s.base, clearance: s.clearance, labelTabs: s.labelTabs,
-    tabDepth: s.tabDepth, textRelief: s.textRelief, label: fontReady ? b.label : '' };
+    tabDepth: s.tabDepth, textRelief: s.textRelief, textStyle: s.textStyle, label: fontReady ? b.label : '' };
 }
 async function meshFor(b) {
   await manifoldReady;
@@ -646,10 +699,12 @@ function wire() {
   numSetting('setRelief', 'textRelief', 0.2);
   numSetting('setGap', 'plateGap', 1, { geometry: false });
   $('setTabs').addEventListener('change', e => { snapshot(); state.settings.labelTabs = e.target.value === '1'; changed(); });
+  $('setTextStyle').addEventListener('change', e => { snapshot(); state.settings.textStyle = e.target.value; changed(); });
   $('setStretch').addEventListener('change', e => { snapshot(); state.settings.stretch = e.target.value; changed(); });
 
   $('btnMerge').onclick = merge;
   $('btnSplit').onclick = split;
+  $('btnDelete').onclick = deleteSelected;
   $('btnAll').onclick = () => { selection = new Set(state.boxes.map(b => b.id)); changed({ geometry: false }); };
   $('btnNone').onclick = () => { selection.clear(); changed({ geometry: false }); };
   $('btnUndo').onclick = undo;
@@ -675,6 +730,7 @@ function wire() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
     else if (e.key === 'm' || e.key === 'M') merge();
     else if (e.key === 's' || e.key === 'S') split();
+    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelected(); }
     else if (e.key === 'a' || e.key === 'A') { selection = new Set(state.boxes.map(b => b.id)); changed({ geometry: false }); }
     else if (e.key === 'Escape') { selection.clear(); changed({ geometry: false }); }
   });
