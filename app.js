@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import ManifoldModule from 'https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js';
 import * as opentype from 'https://cdn.jsdelivr.net/npm/opentype.js@2.0.0/dist/opentype.mjs';
 import { zipSync, strToU8, deflateSync, inflateSync } from 'https://cdn.jsdelivr.net/npm/fflate@0.8.3/esm/browser.js';
-import * as G from './geometry.js?v=3';
+import * as G from './geometry.js?v=4';
 
 const FONT_URL = 'https://cdn.jsdelivr.net/npm/@fontsource/roboto@5.3.0/files/roboto-latin-700-normal.woff';
 const CELL = 50;                                   // grid pitch, mm

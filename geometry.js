@@ -173,7 +173,7 @@ function buildBoxInner(cells, grid, opts, k) {
 
     if (relief > 0) {
       const margin = 2;
-      let size = Math.min(d * 0.62, 9);
+      let size = Math.min(d * 0.72, 10.5);    // em size; 0.72 keeps the cut clear of the thin back edge of the tab
       let cs = textCrossSection(text, size);
       if (cs) k(cs);
       if (cs) {
